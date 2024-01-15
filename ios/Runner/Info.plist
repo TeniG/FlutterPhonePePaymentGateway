@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>ppemerchantsdkv1</string>
+        <string>ppemerchantsdkv2</string>
+        <string>ppemerchantsdkv3</string>
+        <string>paytmmp</string>
+        <string>gpay</string>
+    </array>
 </dict>
 </plist>
