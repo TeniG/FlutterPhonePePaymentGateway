@@ -36,6 +36,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     phonepePaymentInit();
+    body = getCheckSum();
     super.initState();
   }
 
