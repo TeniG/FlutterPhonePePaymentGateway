@@ -16,13 +16,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String environment = "SANDBOX";
   String appId = "";
   String merchantId = "PGTESTPAYUAT";
-  final String _transactionId =
-      DateTime.now().millisecondsSinceEpoch.toString();
+  
 
   bool enableLogging = true;
 
   String packageName = "";
-  String checksum = "";
   String saltkey = "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399";
   String saltIndex = "1";
   String callbackurl = "https://webhook.site/callback-url";
@@ -36,7 +34,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     phonepePaymentInit();
-    body = getCheckSum();
     super.initState();
   }
 
@@ -94,15 +91,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 height: 24,
               ),
               if (_paymentStatus != "")
-              const Text(
-                "Transaction Status: ",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                const Text(
+                  "Transaction Status: ",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              if (_paymentStatus != "")
-              Text("$_paymentStatus"),
+              if (_paymentStatus != "") Text("$_paymentStatus"),
             ],
           ),
         ));
@@ -128,6 +124,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void startPGTransaction() async {
+    final String transactionId =DateTime.now().millisecondsSinceEpoch.toString();
+    Map<String,Object> requestData = getRequestData(transactionId);
+
+    String body = getBase64Body(requestData);
+    String checksum = getCheckSum(requestData);
+
     PhonePePaymentSdk.startTransaction(body, callbackurl, checksum, packageName)
         .then((response) async {
       String message = "";
@@ -136,7 +138,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         String error = response['error'].toString();
         if (status == 'SUCCESS') {
           message = "Flow Completed - Status: Success!";
-          await checkPaymentStatus();
+          await checkPaymentStatus(transactionId);
         } else {
           message = "Flow Completed - Status: $status and Error: $error";
         }
@@ -153,31 +155,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
     });
   }
 
-  String getCheckSum() {
+  Map<String, Object> getRequestData(String transactionId) {
     final requestData = {
       "merchantId": merchantId,
-      "merchantTransactionId": _transactionId,
+      "merchantTransactionId": transactionId,
       "merchantUserId": "MUID123",
-      "amount": 10000,
+      "amount": 300*1000,
       "callbackUrl": callbackurl,
       "mobileNumber": "9999999999",
       "paymentInstrument": {"type": "PAY_PAGE"}
     };
 
-    String base64Body = base64.encode(utf8.encode(json.encode(requestData)));
-    checksum =
-        '${sha256.convert(utf8.encode(base64Body + apiEndPoint + saltkey)).toString()}###$saltIndex';
+    return requestData;
+  }
 
+  String getBase64Body(Map<String, Object> requestData) {
+    String base64Body = base64.encode(utf8.encode(json.encode(requestData)));
     return base64Body;
   }
 
-  checkPaymentStatus() async {
+  String getCheckSum(Map<String, Object> requestData) {
+    String base64Body = base64.encode(utf8.encode(json.encode(requestData)));
+    String checksum =
+        '${sha256.convert(utf8.encode(base64Body + apiEndPoint + saltkey)).toString()}###$saltIndex';
+
+    return checksum;
+  }
+
+  checkPaymentStatus(String transactionId) async {
     try {
       String url =
-          "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/status/$merchantId/$_transactionId";
+          "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/status/$merchantId/$transactionId";
 
       String xVerifyString =
-          "/pg/v1/status/$merchantId/$_transactionId$saltkey";
+          "/pg/v1/status/$merchantId/$transactionId$saltkey";
       var bytes = utf8.encode(xVerifyString);
       var digest = sha256.convert(bytes).toString();
 
@@ -197,7 +208,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               response["code"] == "PAYMENT_SUCCESS" &&
               response["data"]["paymentState"] == "COMPLETED") {
             _paymentStatus =
-                response["message"] + "\n TransactionId: $_transactionId";
+                response["message"] + "\n TransactionId: $transactionId";
           } else {
             _paymentStatus = response["message"];
           }
