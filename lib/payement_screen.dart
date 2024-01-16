@@ -13,11 +13,11 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
+  TextEditingController _amountTextEditingController = TextEditingController();
+
   String environment = "SANDBOX";
   String appId = "";
   String merchantId = "PGTESTPAYUAT";
-  
-
   bool enableLogging = true;
 
   String packageName = "";
@@ -38,11 +38,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void _onPayNowClicked() {
-    setState(() {
-      _result = null;
-      _paymentStatus = "";
-    });
     startPGTransaction();
+    setState(() {
+      _paymentStatus = "";
+      _result = null;
+    });
   }
 
   @override
@@ -59,6 +59,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              TextField(
+                controller: _amountTextEditingController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  prefixText: "₹",
+                  labelText: "Amount",
+                  labelStyle: TextStyle(
+                    fontSize: 24,
+                  ),
+                ),
+                onChanged: (value) {
+                  _amountTextEditingController.text = value;
+                },
+              ),
+              const SizedBox(
+                height: 24,
+              ),
               Center(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -124,8 +141,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void startPGTransaction() async {
-    final String transactionId =DateTime.now().millisecondsSinceEpoch.toString();
-    Map<String,Object> requestData = getRequestData(transactionId);
+    final String transactionId =
+        DateTime.now().millisecondsSinceEpoch.toString();
+    Map<String, Object> requestData = getRequestData(transactionId);
 
     String body = getBase64Body(requestData);
     String checksum = getCheckSum(requestData);
@@ -156,11 +174,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Map<String, Object> getRequestData(String transactionId) {
+    var amount = int.parse(_amountTextEditingController.text) * 100;
+
+    print("amount = $amount");
     final requestData = {
       "merchantId": merchantId,
       "merchantTransactionId": transactionId,
       "merchantUserId": "MUID123",
-      "amount": 300*1000,
+      "amount": amount,
       "callbackUrl": callbackurl,
       "mobileNumber": "9999999999",
       "paymentInstrument": {"type": "PAY_PAGE"}
@@ -187,8 +208,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       String url =
           "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/status/$merchantId/$transactionId";
 
-      String xVerifyString =
-          "/pg/v1/status/$merchantId/$transactionId$saltkey";
+      String xVerifyString = "/pg/v1/status/$merchantId/$transactionId$saltkey";
       var bytes = utf8.encode(xVerifyString);
       var digest = sha256.convert(bytes).toString();
 
@@ -208,9 +228,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
               response["code"] == "PAYMENT_SUCCESS" &&
               response["data"]["paymentState"] == "COMPLETED") {
             _paymentStatus =
-                response["message"] + "\n TransactionId: $transactionId";
+                "${response["message"]} \n TransactionId: $transactionId";
           } else {
-            _paymentStatus = response["message"];
+            _paymentStatus =
+                "${response["message"]} \n TransactionId: $transactionId";
           }
         } catch (e) {
           _paymentStatus = "Error : ${e.toString()}";
