@@ -1,8 +1,9 @@
+import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart';
 import 'package:phonepe_payment_sdk/phonepe_payment_sdk.dart';
+import 'package:http/http.dart' as http;
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -15,6 +16,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String environment = "SANDBOX";
   String appId = "";
   String merchantId = "PGTESTPAYUAT";
+  final String _transactionId =
+      DateTime.now().millisecondsSinceEpoch.toString();
+
   bool enableLogging = true;
 
   String packageName = "";
@@ -27,30 +31,79 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String apiEndPoint = "/pg/v1/pay";
 
   Object? _result;
+  String _paymentStatus = "";
 
   @override
   void initState() {
     phonepePaymentInit();
-    body = getCheckSum().toString();
     super.initState();
+  }
+
+  void _onPayNowClicked() {
+    setState(() {
+      _result = null;
+      _paymentStatus = "";
+    });
+    startPGTransaction();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: const Text("PhonePe Payment Gateway App"),
+          title: const Text("PhonePe Payment App",
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          foregroundColor: Colors.white,
+          backgroundColor: Theme.of(context).colorScheme.primary,
         ),
-        body: Column(
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                startPGTransaction();
-              },
-              child: const Text("Start Transcation"),
-            ),
-            Text("Result \n $_result"),
-          ],
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color.fromARGB(255, 248, 229, 23),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 50,
+                      vertical: 20,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: _onPayNowClicked,
+                  child: const Text("Pay Now"),
+                ),
+              ),
+              const SizedBox(
+                height: 24,
+              ),
+              const Text(
+                "Result:",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text("$_result"),
+              const SizedBox(
+                height: 24,
+              ),
+              if (_paymentStatus != "")
+              const Text(
+                "Transaction Status: ",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (_paymentStatus != "")
+              Text("$_paymentStatus"),
+            ],
+          ),
         ));
   }
 
@@ -75,32 +128,34 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void startPGTransaction() async {
     PhonePePaymentSdk.startTransaction(body, callbackurl, checksum, packageName)
-        .then((response) => {
-              setState(() {
-                if (response != null) {
-                  String status = response['status'].toString();
-                  String error = response['error'].toString();
-                  if (status == 'SUCCESS') {
-                    _result = "Flow Completed - Status: Success!";
-                  } else {
-                    _result =
-                        "Flow Completed - Status: $status and Error: $error";
-                  }
-                } else {
-                  _result = "Flow Incomplete";
-                }
-              })
-            })
-        .catchError((error) {
-      // handleError(error)
-      return <dynamic>{};
+        .then((response) async {
+      String message = "";
+      if (response != null) {
+        String status = response['status'].toString();
+        String error = response['error'].toString();
+        if (status == 'SUCCESS') {
+          message = "Flow Completed - Status: Success!";
+          await checkPaymentStatus();
+        } else {
+          message = "Flow Completed - Status: $status and Error: $error";
+        }
+      } else {
+        message = "Flow Incomplete";
+      }
+
+      setState(() {
+        _result = message;
+      });
+    }).catchError((error) {
+      handleError(error);
+      // return <dynamic>{};
     });
   }
 
   String getCheckSum() {
     final requestData = {
       "merchantId": merchantId,
-      "merchantTransactionId": "MT7850590068188104",
+      "merchantTransactionId": _transactionId,
       "merchantUserId": "MUID123",
       "amount": 10000,
       "callbackUrl": callbackurl,
@@ -113,5 +168,44 @@ class _PaymentScreenState extends State<PaymentScreen> {
         '${sha256.convert(utf8.encode(base64Body + apiEndPoint + saltkey)).toString()}###$saltIndex';
 
     return base64Body;
+  }
+
+  checkPaymentStatus() async {
+    try {
+      String url =
+          "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/status/$merchantId/$_transactionId";
+
+      String xVerifyString =
+          "/pg/v1/status/$merchantId/$_transactionId$saltkey";
+      var bytes = utf8.encode(xVerifyString);
+      var digest = sha256.convert(bytes).toString();
+
+      String xVerify = '$digest###$saltIndex';
+
+      Map<String, String> requestHeader = {
+        "Content-Type": "application/json",
+        "X-VERIFY": xVerify,
+        "X-CLIENT-ID": merchantId
+      };
+
+      await http.get(Uri.parse(url), headers: requestHeader).then((value) {
+        Map<String, dynamic> response = jsonDecode(value.body);
+
+        try {
+          if (response["success"] &&
+              response["code"] == "PAYMENT_SUCCESS" &&
+              response["data"]["paymentState"] == "COMPLETED") {
+            _paymentStatus =
+                response["message"] + "\n TransactionId: $_transactionId";
+          } else {
+            _paymentStatus = response["message"];
+          }
+        } catch (e) {
+          _paymentStatus = "Error : ${e.toString()}";
+        }
+      });
+    } catch (e) {
+      _paymentStatus = "Error : Something went wrong}";
+    }
   }
 }
